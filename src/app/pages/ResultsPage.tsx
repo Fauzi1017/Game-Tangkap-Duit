@@ -103,11 +103,7 @@ export default function ResultsPage() {
   const partialResults: PartialResult[] = (scores as number[]).map((score, i) => ({
     player: i + 1,
     score,
-    prize: Math.round(
-      totalScore === 0
-        ? totalPrize / numPlayers
-        : (score / totalScore) * totalPrize
-    ),
+    prize: Math.min(score, totalPrize),
   }));
   partialResults.sort((a, b) => b.score - a.score);
   const results: ResultEntry[] = partialResults.map((r, i) => ({ ...r, rank: i + 1 }));
@@ -227,11 +223,6 @@ export default function ResultsPage() {
                   <span className="text-green-400 text-sm" style={{ fontWeight: 'bold' }}>
                     {formatRp(r.prize)}
                   </span>
-                  {totalScore > 0 && (
-                    <span className="text-white/30 text-xs">
-                      ({scorePercent.toFixed(1)}% skor)
-                    </span>
-                  )}
                 </div>
               </div>
             );

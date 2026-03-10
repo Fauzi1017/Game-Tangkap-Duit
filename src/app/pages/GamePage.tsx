@@ -40,47 +40,79 @@ function drawCoin(
   ctx.translate(x, y);
   ctx.rotate(rotation);
 
-  const cfgs: Record<number, { bg: string; border: string; textColor: string; label: string }> = {
-    1000: { bg: '#CD853F', border: '#8B4513', textColor: '#5C2A0A', label: 'Rp1K' },
-    2000: { bg: '#B8B8B8', border: '#808080', textColor: '#333', label: 'Rp2K' },
-    5000: { bg: '#FFD700', border: '#B8860B', textColor: '#7A5500', label: 'Rp5K' },
+  // Note dimensions (realistic 2:1 aspect ratio roughly)
+  const width = size * 2.5;
+  const height = size * 1.2;
+
+  // Realistic Indonesian Rupiah Colors
+  const cfgs: Record<number, { bg: string; border: string; accent: string; label: string }> = {
+    1000: { bg: '#E4E9D8', border: '#70836D', accent: '#9EB09A', label: '1000' },     // Greenish
+    2000: { bg: '#E6DDD5', border: '#9E8D7D', accent: '#BAA998', label: '2000' },     // Grayish
+    5000: { bg: '#EDDFBA', border: '#9E823E', accent: '#C4A86A', label: '5000' },     // Brown/Yellow
+    10000: { bg: '#E1D9F0', border: '#604A81', accent: '#8B74AF', label: '10000' },   // Purple
+    20000: { bg: '#D3ECD8', border: '#4E7C62', accent: '#6FA487', label: '20000' },   // Green
+    50000: { bg: '#D2E6FA', border: '#335A85', accent: '#5A88B8', label: '50000' },   // Blue
+    100000: { bg: '#F7D4D4', border: '#8A3B39', accent: '#C86260', label: '100000' }, // Red
   };
-  const c = cfgs[value] ?? cfgs[1000];
+  
+  const c = cfgs[value] ?? cfgs[100000];
 
-  ctx.shadowColor = 'rgba(0,0,0,0.5)';
-  ctx.shadowBlur = 10;
-  ctx.shadowOffsetY = 5;
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = Math.max(5, size * 0.2);
+  ctx.shadowOffsetY = Math.max(2, size * 0.1);
 
+  // Main paper base
   ctx.beginPath();
-  ctx.arc(0, 0, size, 0, Math.PI * 2);
+  ctx.roundRect(-width / 2, -height / 2, width, height, size * 0.1);
   ctx.fillStyle = c.bg;
   ctx.fill();
 
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  
+  // Outer Border
   ctx.strokeStyle = c.border;
-  ctx.lineWidth = 3;
+  ctx.lineWidth = Math.max(1, size * 0.05);
   ctx.stroke();
 
+  // Fine inner detail border
   ctx.beginPath();
-  ctx.arc(0, 0, size * 0.82, 0, Math.PI * 2);
-  ctx.strokeStyle = c.border + '44';
-  ctx.lineWidth = 1.5;
+  ctx.roundRect(-width / 2 + size * 0.15, -height / 2 + size * 0.15, width - size * 0.3, height - size * 0.3, size * 0.05);
+  ctx.strokeStyle = c.accent;
+  ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Shine
-  const grad = ctx.createRadialGradient(-size * 0.25, -size * 0.3, 0, -size * 0.25, -size * 0.3, size * 0.65);
-  grad.addColorStop(0, 'rgba(255,255,255,0.65)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  // Abstract watermark/face placeholder circle on the right side
   ctx.beginPath();
-  ctx.arc(0, 0, size, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
+  ctx.ellipse(width / 4, 0, size * 0.35, size * 0.45, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = c.accent + '66';
+  ctx.stroke();
+  
+  // Subtle pattern lines vertically
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(-width / 4 + i * (size * 0.1), -height / 2 + size * 0.2);
+    ctx.lineTo(-width / 4 + i * (size * 0.1), height / 2 - size * 0.2);
+    ctx.strokeStyle = c.accent + '33';
+    ctx.stroke();
+  }
 
-  ctx.fillStyle = c.textColor;
-  ctx.font = `bold ${Math.floor(size * 0.42)}px Arial`;
+  // Text values
+  ctx.fillStyle = c.border;
+  ctx.font = `bold ${Math.floor(size * 0.45)}px 'Courier New', Courier, monospace`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(c.label, -width / 2 + size * 0.2, -height / 2 + size * 0.2);
+  
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(c.label, width / 2 - size * 0.2, height / 2 - size * 0.2);
+
+  // Center "BANK INDONESIA" abstract text
+  ctx.fillStyle = c.border + '88';
+  ctx.font = `${Math.floor(size * 0.2)}px Arial`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(c.label, 0, 0);
+  ctx.fillText('BANK INDONESIA', 0, -size * 0.1);
 
   ctx.restore();
 }
@@ -178,6 +210,7 @@ export default function GamePage() {
   const numPlayers: number = state.numPlayers ?? 2;
   const totalPrize: number = state.totalPrize ?? 100000;
   const duration: number = state.duration ?? 60;
+  const selectedPecahan: number[] = state.selectedPecahan ?? [1000, 2000, 5000];
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [displayScores, setDisplayScores] = useState<number[]>(new Array(numPlayers).fill(0));
@@ -262,11 +295,16 @@ export default function GamePage() {
     };
   }, []);
 
-  // ── Camera setup — never blocks game start; falls back to mouse on failure
+  // ── Camera setup
   const setupCamera = async (): Promise<'camera' | 'mouse'> => {
     try {
+      setLoadingMsg('Meminta akses kamera... (menyesuaikan resolusi layar)');
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { 
+          facingMode: 'user', 
+          width: { ideal: window.innerWidth }, 
+          height: { ideal: window.innerHeight } 
+        },
       });
       const video = videoRef.current;
       if (!video) return 'mouse';
@@ -283,15 +321,34 @@ export default function GamePage() {
   };
 
   // ── Detector setup
-  const setupDetector = async (): Promise<boolean> => {
+  const setupDetector = async (videoOrNull: HTMLVideoElement | null = null): Promise<boolean> => {
     try {
       setLoadingMsg('Memuat model AI pengenal wajah... (butuh beberapa detik)');
       await tf.setBackend('webgl');
       await tf.ready();
-      detectorRef.current = await poseDetection.createDetector(
+      const detector = await poseDetection.createDetector(
         poseDetection.SupportedModels.MoveNet,
         { modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING }
       );
+      detectorRef.current = detector;
+
+      // Warm up the ML model (compiles the WebGL Shaders so the first frame isn't slow)
+      if (videoOrNull && videoOrNull.readyState >= 2) {
+        setLoadingMsg('Memanaskan mesin AI...');
+        try {
+          await detector.estimatePoses(videoOrNull);
+        } catch (e) {
+          console.warn('Warmup inference failed, but model is ready:', e);
+        }
+      } else {
+        // Fallback warmup on an empty canvas if camera isn't fully ready yet
+        const dummyCanvas = document.createElement('canvas');
+        dummyCanvas.width = 640; dummyCanvas.height = 480;
+        try {
+          await detector.estimatePoses(dummyCanvas);
+        } catch(e) { /* ignore */ }
+      }
+
       return true;
     } catch (e) {
       console.error('Detector error:', e);
@@ -335,7 +392,8 @@ export default function GamePage() {
     }
 
     if (isDetectingRef.current) {
-      setTimeout(runDetection, 50);
+      // Faster, smoother tracking interval now that resolution is lower
+      setTimeout(runDetection, 30);
     }
   }, []);
 
@@ -374,15 +432,20 @@ export default function GamePage() {
       const baseSpeed = H / 220;
       let value = 1000, size = Math.floor(W * 0.027);
       if (!isBomb) {
-        const r = Math.random();
-        if (r < 0.1) { value = 5000; size = Math.floor(W * 0.043); }
-        else if (r < 0.35) { value = 2000; size = Math.floor(W * 0.034); }
-        else { value = 1000; size = Math.floor(W * 0.026); }
+        // Pick a random selected pecahan.
+        // We can weight it slightly so lower values appear more often
+        const randIndex = Math.floor(Math.pow(Math.random(), 2) * selectedPecahan.length);
+        // Reverse index so smaller indices (larger numbers if descending, but our array is sorted ascending, so smaller math.pow means smaller index = smaller value)
+        value = selectedPecahan[randIndex] || selectedPecahan[0];
+        
+        // Size varies slightly based on value (larger value = slightly larger note)
+        const scaleFactor = 1 + (selectedPecahan.indexOf(value) * 0.1); 
+        size = Math.floor(W * 0.025 * scaleFactor);
       } else {
         size = Math.floor(W * 0.032);
       }
       fallingObjsRef.current.push({
-        id: objIdRef.current++, x, y: -size - 20,
+        id: objIdRef.current++, x, y: -size * 2 - 20,
         type: isBomb ? 'bomb' : 'coin', value,
         vy: baseSpeed * (1.5 + Math.random() * 2.5),
         rotation: Math.random() * Math.PI * 2,
@@ -428,6 +491,11 @@ export default function GamePage() {
               id: popupIdRef.current++, x: obj.x, y: obj.y - 30,
               value: obj.value, alpha: 1.0, vy: -2.5,
             });
+
+            // If a player reaches or exceeds the total prize, finish the game immediately
+            if (scoresRef.current[caughtBy] >= totalPrize) {
+              finishTurnRef.current();
+            }
           }
         } else {
           scoresRef.current[caughtBy] = 0;
@@ -462,7 +530,17 @@ export default function GamePage() {
       alivePopups.push(p);
       ctx.save();
       ctx.globalAlpha = p.alpha;
-      const popColor = p.value === 5000 ? '#FFD700' : p.value === 2000 ? '#E0E0E0' : '#F4A460';
+      // Map the colors dynamically based on the caught value to match the background of the money Note
+      const getPopColor = (val: number) => {
+        if (val >= 100000) return '#C86260';
+        if (val >= 50000) return '#5A88B8';
+        if (val >= 20000) return '#6FA487';
+        if (val >= 10000) return '#8B74AF';
+        if (val >= 5000) return '#C4A86A';
+        if (val >= 2000) return '#BAA998';
+        return '#9EB09A';
+      };
+      const popColor = getPopColor(p.value);
       ctx.font = `bold ${Math.floor(W * 0.022)}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -560,13 +638,17 @@ export default function GamePage() {
     let cancelled = false;
 
     const init = async () => {
-      const camMode = await setupCamera();
+      setPhase('loading');
+      
+      // Load camera and detector CONCURRENTLY for vastly improved load times
+      const [camMode, detOk] = await Promise.all([
+        setupCamera(),
+        setupDetector(videoRef.current)
+      ]);
+
       if (cancelled) return;
 
       if (camMode === 'camera') {
-        // Camera available — load hand detector
-        const detOk = await setupDetector();
-        if (cancelled) return;
         if (!detOk) {
           // Detector failed — fall back to mouse control but still show camera
           controlModeRef.current = 'mouse';
